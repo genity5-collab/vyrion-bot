@@ -6,6 +6,9 @@ import {
     SlashCommandBuilder,
     PermissionFlagsBits,
     EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
 } from "discord.js";
 import { loadingBar } from "./loading.js";
 
@@ -16,6 +19,9 @@ if (!TOKEN) {
 }
 
 const PRIVILEGED = process.env.VYRION_PRIVILEGED !== "0";
+
+const NITRO_GIFT_URL = "https://base44.app/api/apps/6a6c7d9e14b0784991815f94/files/mp/public/6a6c7d9e14b0784991815f94/5657858ee_gift.jpg";
+const NITRO_LOGO_URL = "https://base44.app/api/apps/6a6c7d9e14b0784991815f94/files/mp/public/6a6c7d9e14b0784991815f94/6738847a2_logo.jpg";
 
 // ---------- storage: bun:sqlite under Bun, JSON file fallback under plain Node ----------
 fs.mkdirSync("data", { recursive: true });
@@ -257,9 +263,9 @@ const commands = [
             .setName("gaymeter").setDescription("Measure how gay someone is. 100% scientific.*")
             .addUserOption((o) => o.setName("member").setDescription("Who to measure (defaults to you)")),
         async execute(interaction) {
-            const member = interaction.options.getMember("member") ?? interaction.member;
-            if (member.user?.bot) return interaction.reply({ content: "🤖 Robots are immune to the gay meter. Blame physics." });
-            await loadingBar(interaction);
+            const user = interaction.options.getUser("member") ?? interaction.user;
+            if (user.bot) return interaction.reply({ content: "🤖 Robots are immune to the gay meter. Blame physics." });
+            await loadingBar(interaction, "🏳️‍🌈 Calibrating the sensors");
             const score = Math.floor(Math.random() * 101);
             const tiers = [
                 [95, "The math is mathing WAY too hard 🌈"],
@@ -279,7 +285,7 @@ const commands = [
             const emb = new EmbedBuilder()
                 .setTitle("🏳️‍🌈 Gay Meter 3000").setColor(0xff73fa)
                 .addFields(
-                    { name: "Target", value: `${member}`, inline: true },
+                    { name: "Target", value: `${user}`, inline: true },
                     { name: "Result", value: `**${score}%** gay`, inline: true },
                     { name: "Reading", value: `${bar}\n${tier}`, inline: false },
                 )
@@ -290,22 +296,34 @@ const commands = [
     {
         data: new SlashCommandBuilder()
             .setName("fakenitro").setDescription("Gift someone 100% real, totally legit Nitro. 🎁")
-            .addUserOption((o) => o.setName("member").setDescription("Who gets the 'gift'")),
+            .addUserOption((o) => o.setName("member").setDescription("Who gets the 'gift' (defaults to you)")),
         async execute(interaction) {
-            const member = interaction.options.getMember("member") ?? interaction.member;
-            await loadingBar(interaction);
-            const plans = ["Nitro Basic", "Nitro Full", "Nitro Ultra Deluxe™", "Nitro but better", "Nitro Plus Max Pro"];
+            const target = interaction.options.getUser("member") ?? interaction.user;
+            await loadingBar(interaction, "🎁 Wrapping your gift");
+            const plans = [
+                "1 month of Discord Nitro Full",
+                "3 months of Discord Nitro Full",
+                "1 month of Discord Nitro Basic",
+                "1 year of Discord Nitro Full",
+            ];
             const plan = plans[Math.floor(Math.random() * plans.length)];
             const emb = new EmbedBuilder()
-                .setTitle(`🎉 You've been gifted Discord ${plan}!`)
+                .setColor(0x5865F2)
+                .setAuthor({ name: "Nitro", iconURL: NITRO_LOGO_URL })
+                .setTitle("You've been gifted Nitro!")
                 .setDescription(
-                    `${member}, someone REALLY likes you.\n\n` +
-                    "Click below to claim your absolutely genuine, not-at-all-suspicious gift!\n\n" +
-                    "[🎉 CLAIM YOUR NITRO](https://www.youtube.com/watch?v=dQw4w9WgXcQ)"
+                    `**${target.username}** has gifted you **${plan}!**\n\n` +
+                    "This gift was purchased from a shop, so you can enjoy Nitro without any worries! 🎉\n\n" +
+                    "This gift expires **in 48 hours**."
                 )
-                .setColor([0xff73fa, 0x7289da, 0x57f287, 0xfee75c, 0xeb459e][Math.floor(Math.random() * 5)])
-                .setFooter({ text: "Vyrion is not responsible for broken friendships or trust issues." });
-            await interaction.editReply({ embeds: [emb] });
+                .setThumbnail(NITRO_GIFT_URL)
+                .setFooter({ text: "Guaranteed to be legit or your money back.", iconURL: NITRO_LOGO_URL });
+            const accept = new ButtonBuilder()
+                .setLabel("Accept Gift")
+                .setStyle(ButtonStyle.Link)
+                .setURL("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+                .setEmoji("🎁");
+            await interaction.editReply({ embeds: [emb], components: [new ActionRowBuilder().addComponents(accept)] });
         },
     },
     {

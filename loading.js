@@ -13,8 +13,8 @@ export const STATUS_LINES = [
     "Reticulating splines... 📐",
 ];
 
-const FRAMES = 8;
-const DELAY = 350; // total animation ~2.8s
+const FRAMES = 6;
+const DELAY = 170; // total animation ~1s
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
