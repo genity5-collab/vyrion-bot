@@ -17,11 +17,11 @@ if (!TOKEN) {
 
 const PRIVILEGED = process.env.VYRION_PRIVILEGED !== "0";
 
-// ---------- database (bun:sqlite, zero extra deps) ----------
+// ---------- storage: bun:sqlite under Bun, JSON file fallback under plain Node ----------
+fs.mkdirSync("data", { recursive: true });
 let db = null;
 try {
     const { Database } = await import("bun:sqlite");
-    fs.mkdirSync("data", { recursive: true });
     db = new Database("data/vyrion.db");
     db.run(`CREATE TABLE IF NOT EXISTS strikes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,19 +32,36 @@ try {
         created_at TEXT DEFAULT (datetime('now'))
     )`);
     db.run(`CREATE INDEX IF NOT EXISTS idx_strikes_lookup ON strikes (guild_id, user_id)`);
-    console.log("[vyrion] strike database ready");
+    console.log("[vyrion] strike database ready (bun:sqlite)");
 } catch {
-    console.warn("[vyrion] bun:sqlite unavailable — strikes won't persist (not running under Bun?)");
+    console.warn("[vyrion] bun:sqlite unavailable — using JSON file fallback for strikes");
 }
 
-const addStrike = (guildId, userId, modId, reason) =>
-    db.run("INSERT INTO strikes (guild_id, user_id, moderator_id, reason) VALUES (?, ?, ?, ?)", [guildId, userId, modId, reason || "No reason given"]);
-const strikeCount = (guildId, userId) =>
-    db.query("SELECT COUNT(*) AS c FROM strikes WHERE guild_id = ? AND user_id = ?").get(guildId, userId).c;
-const listStrikes = (guildId, userId) =>
-    db.query("SELECT reason, created_at FROM strikes WHERE guild_id = ? AND user_id = ? ORDER BY id DESC").all(guildId, userId);
-const clearStrikes = (guildId, userId) =>
-    db.run("DELETE FROM strikes WHERE guild_id = ? AND user_id = ?", [guildId, userId]);
+const JSON_PATH = "data/strikes.json";
+const loadJson = () => { try { return JSON.parse(fs.readFileSync(JSON_PATH, "utf8")); } catch { return []; } };
+const saveJson = (rows) => fs.writeFileSync(JSON_PATH, JSON.stringify(rows, null, 2));
+const now = () => new Date().toISOString().slice(0, 19).replace("T", " ");
+
+const store = {
+    available: true,
+    add(guildId, userId, modId, reason) {
+        const r = { reason: reason || "No reason given", created_at: now() };
+        if (db) db.run("INSERT INTO strikes (guild_id, user_id, moderator_id, reason) VALUES (?, ?, ?, ?)", [guildId, userId, modId, r.reason]);
+        else { const rows = loadJson(); rows.push({ guild_id: guildId, user_id: userId, reason: r.reason, created_at: r.created_at }); saveJson(rows); }
+    },
+    count(guildId, userId) {
+        if (db) return db.query("SELECT COUNT(*) AS c FROM strikes WHERE guild_id = ? AND user_id = ?").get(guildId, userId).c;
+        return loadJson().filter((r) => r.guild_id === guildId && r.user_id === userId).length;
+    },
+    list(guildId, userId) {
+        if (db) return db.query("SELECT reason, created_at FROM strikes WHERE guild_id = ? AND user_id = ? ORDER BY id DESC").all(guildId, userId);
+        return loadJson().filter((r) => r.guild_id === guildId && r.user_id === userId).reverse();
+    },
+    clear(guildId, userId) {
+        if (db) db.run("DELETE FROM strikes WHERE guild_id = ? AND user_id = ?", [guildId, userId]);
+        else saveJson(loadJson().filter((r) => !(r.guild_id === guildId && r.user_id === userId)));
+    },
+};
 
 // ---------- helpers ----------
 const modEmbed = (action, target, moderator, reason, extra) => {
@@ -185,9 +202,8 @@ const commands = [
             const reason = interaction.options.getString("reason");
             const err = hierarchyError(interaction, member);
             if (err) return interaction.editReply({ content: err });
-            if (!db) return interaction.editReply({ content: "❌ Strike database unavailable." });
-            addStrike(interaction.guild.id, member.id, interaction.user.id, reason);
-            const count = strikeCount(interaction.guild.id, member.id);
+            store.add(interaction.guild.id, member.id, interaction.user.id, reason);
+            const count = store.count(interaction.guild.id, member.id);
             let extra = `Total strikes: **${count}**`;
             if (count === 3) {
                 await member.timeout(60 * 60_000, "Vyrion: 3 strikes");
@@ -215,8 +231,7 @@ const commands = [
         async execute(interaction) {
             await loadingBar(interaction);
             const member = interaction.options.getMember("member");
-            if (!db) return interaction.editReply({ content: "❌ Strike database unavailable." });
-            const rows = listStrikes(interaction.guild.id, member.id);
+            const rows = store.list(interaction.guild.id, member.id);
             if (!rows.length) return interaction.editReply({ content: `✨ ${member} has a clean record.` });
             const emb = new EmbedBuilder().setTitle(`⚠️ Strikes for ${member.user.tag}`).setColor(0xee8434);
             rows.slice(0, 10).forEach((r, i) => emb.addFields({ name: `#${i + 1} • ${String(r.created_at).slice(0, 16)}`, value: r.reason || "No reason given", inline: false }));
@@ -232,9 +247,8 @@ const commands = [
             .setDMPermission(false),
         async execute(interaction) {
             await loadingBar(interaction);
-            if (!db) return interaction.editReply({ content: "❌ Strike database unavailable." });
             const member = interaction.options.getMember("member");
-            clearStrikes(interaction.guild.id, member.id);
+            store.clear(interaction.guild.id, member.id);
             await interaction.editReply({ content: `🧽 Cleared all strikes for ${member}.` });
         },
     },
@@ -304,7 +318,7 @@ const commands = [
                 .setColor(0x9b59b6)
                 .addFields(
                     { name: "🏓 Ping", value: `${Math.round(interaction.client.ws.ping)} ms`, inline: true },
-                    { name: "🛡️ Anti-spam", value: db ? "Online" : "Disabled", inline: true },
+                    { name: "🛡️ Anti-spam", value: store.available ? "Online" : "Disabled", inline: true },
                     { name: "Servers", value: `${interaction.client.guilds.cache.size}`, inline: true },
                     { name: "Commands", value: "`/mute` `/unmute` `/kick` `/ban` `/unban` `/clear` `/strike` `/strikes` `/clearstrikes` `/gaymeter` `/fakenitro` `/vyrion`", inline: false },
                 );
