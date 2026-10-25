@@ -53,6 +53,7 @@ ensure_dependencies()
 import logging  # noqa: E402
 
 import discord  # noqa: E402
+from discord import app_commands  # noqa: E402
 from discord.ext import commands  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
@@ -126,6 +127,37 @@ class Vyrion(commands.Bot):
 
 
 bot = Vyrion()
+
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    """Surface the REAL reason a command failed, in chat + console."""
+    import traceback
+    log.error("command %s failed for %s:\n%s", interaction.command, interaction.user, "".join(traceback.format_exception(error)))
+
+    friendly = None
+    from discord import app_commands as ac
+    if isinstance(error, ac.CheckFailure):
+        if isinstance(error, ac.BotMissingPermissions):
+            friendly = "Vyrion is missing these permissions: " + ", ".join(error.missing_permissions)
+        elif isinstance(error, ac.MissingPermissions):
+            friendly = "You're missing these permissions: " + ", ".join(error.missing_permissions)
+        else:
+            friendly = "You can't use this command here."
+    elif isinstance(error, discord.Forbidden):
+        friendly = "Vyrion doesn't have permission to do that (check Vyrion's role position in Server Settings → Roles)."
+    elif isinstance(error, discord.HTTPException):
+        friendly = f"Discord API error: {error.status} {error.text}"
+
+    msg = friendly or f"Something went wrong: `{type(error).__name__}: {error}`"
+    try:
+        if interaction.response.is_done():
+            await interaction.edit_original_response(content=f"❌ {msg}")
+        else:
+            await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+    except Exception:
+        pass
+
 
 if __name__ == "__main__":
     bot.run(TOKEN)
