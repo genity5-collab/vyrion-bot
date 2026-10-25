@@ -3,6 +3,7 @@
 AI-powered Discord bot with Roblox integration, moderation, and safety features.
 
 **Status:** v1 — moderation + fun commands + anti-spam. (AI & Roblox integration coming soon.)
+**Runtime:** Bun (JavaScript) — `bun index.js`
 
 ## Commands
 
@@ -19,8 +20,8 @@ AI-powered Discord bot with Roblox integration, moderation, and safety features.
 | `/strikes <member>` | View a member's strike history |
 | `/clearstrikes <member>` | Wipe a member's strikes |
 
-### Anti-spam (always on)
-5+ messages within 3 seconds → auto 10-minute mute + purge of the spam. Staff are exempt.
+### Anti-spam (always on with privileged intents)
+5+ messages within 3 seconds → auto 10-minute mute + purge. Staff are exempt.
 
 ### Fun
 | Command | What it does |
@@ -33,14 +34,11 @@ Every command runs a Replit-style animated loading bar (`▰▰▱▱...`) with 
 
 ## Setup
 
-1. Python 3.10+
-2. `pip install -r requirements.txt`
-3. Set `DISCORD_BOT_TOKEN` env var
-4. **Discord Developer Portal → your app → Bot:**
-   - enable **MESSAGE CONTENT INTENT** and **SERVER MEMBERS INTENT** (privileged intents)
-   - if you can't, run with `VYRION_PRIVILEGED=0` (anti-spam will be disabled)
-5. `python main.py`
+1. Install [Bun](https://bun.sh), then `bun install` (node_modules is committed, so usually not needed)
+2. Set the `DISCORD_BOT_TOKEN` environment variable
+3. **Discord Developer Portal → your app → Bot:** enable **MESSAGE CONTENT INTENT** and **SERVER MEMBERS INTENT** (needed for anti-spam; without them the bot auto-falls back to no-intents mode)
+4. `bun index.js` (or `bun start`)
 
 ## Storage
 
-Strikes are stored in `data/vyrion.db` (SQLite), auto-created on first run.
+Strikes are stored in `data/vyrion.db` (bun:sqlite), auto-created on first run.
